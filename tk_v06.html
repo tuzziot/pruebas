@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoreo de Nivel de Agua - Dashboard de Cisterna</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime&display=swap');
+        
+        :root {
+            --bg-primary: #f0f8ff;
+            --accent-color: #64b5f6;
+            --secondary-color: #bbdefb;
+            --text-primary: #37474f;
+            --alert-color: #ff6b6b;
+            --success-color: #7bed9f;
+            --water-color-normal: linear-gradient(180deg, #64b5f6, #0d47a1);
+            --water-color-low: linear-gradient(180deg, #ff6b6b, #b71c1c);
+            --water-glow: 0 0 15px rgba(100, 181, 246, 0.7);
+            --water-glow-low: 0 0 15px rgba(255, 107, 107, 0.7);
+        }
+        
+        body {
+            font-family: 'Courier Prime', monospace;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #c2d6f7 0%, #d9eaf1 100%);
+            padding: 20px 0;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 90%; /* Hace que el header no toque los extremos laterales */
+            margin: 10px auto; /* Separa 10px del borde superior y lo centra */
+            border-radius: 15px; /* Esquinas redondeadas */
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 3.5rem;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            margin: 0;
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+            transition: transform 0.3s, box-shadow 0.3s;
+            border: 1px solid var(--secondary-color);
+            position: relative;
+            overflow: hidden;
+            
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--secondary-color), var(--accent-color));
+        }
+        
+        .card-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            text-align: center;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #ccc;
+            transition: background-color 0.3s;
+        }
+        
+        .status-connected {
+            background-color: var(--success-color);
+            box-shadow: 0 0 5px var(--success-color);
+        }
+        
+        .status-disconnected {
+            background-color: var(--alert-color);
+            box-shadow: 0 0 5px var(--alert-color);
+        }
+        
+        .tank-container {
+            text-align: center;
+            padding: 20px 0;
+            position: relative;
+            height: auto;
+            width: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .JPGtank {
+            background-image: url("img/tank.png");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+
+            height: 350px;
+            width: 300px;
+
+            border: 0px solid #000000;
+            padding: 10px;
+            border-radius: 10px;
+            display: flex; /* ← cambia de inline-block a flex */
+            justify-content: center; /* Centra horizontalmente */
+            align-items: center;     /* Centra verticalmente */
+            
+        }
+
+        
+
+        
+        .tank {
+            width: 285px;
+            height: 240px;
+            border: 3px solid #c4c4c4;
+            border-radius: 5px 5px 15px 15px;
+            position: relative;
+            overflow: hidden;
+    background: linear-gradient(
+        to right,
+        #555 0%,
+        #777777 15%,
+        #868686 50%,
+        #777777 85%,
+        #555 100%
+    );
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1), 0 5px 15px rgba(0,0,0,0.1);
+            margin-top: 70px; /* ← esto lo baja */
+        }
+        
+        .water {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: var(--water-color-normal);
+            transition: height 1s ease-in-out, background 1s, box-shadow 1s;
+            box-shadow: var(--water-glow);
+        }
+        
+        .water.low-level {
+            background: var(--water-color-low);
+            box-shadow: var(--water-glow-low);
+        }
+        
+        .water-top {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 10px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+            transform: scale(1.1);
+            animation: wave 2s infinite ease-in-out;
+        }
+        
+        @keyframes wave {
+            0%, 100% { transform: translateY(0) scale(1.1); }
+            50% { transform: translateY(-5px) scale(1.1); }
+        }
+        
+        .level-display {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-top: 20px;
+            transition: color 0.3s;
+        }
+        
+        .level-label {
+            font-size: 1.2rem;
+            color: #78909c;
+            margin-top: 5px;
+        }
+        
+        .last-update {
+            font-size: 0.9rem;
+            color: #78909c;
+            text-align: center;
+            margin-top: 15px;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .stat-label {
+            font-size: 0.8rem;
+            color: #78909c;
+        }
+        
+        .chart-container {
+            height: 300px;
+            width: 100%;
+        }
+        
+        footer {
+            margin-top: auto;
+            text-align: center;
+            padding: 10px;
+            font-size: 0.8rem;
+            color: #78909c;
+            background-color: rgba(255,255,255,0.7);
+        }
+        
+        /* Animaciones y efectos */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .new-data {
+            animation: pulse 0.5s ease;
+        }
+        
+        .connection-message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: opacity 0.3s, transform 0.3s;
+            z-index: 1000;
+        }
+        
+        .connection-message.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .connection-success {
+            background-color: var(--success-color);
+            color: #1b5e20;
+        }
+        
+        .connection-error {
+            background-color: var(--alert-color);
+            color: #b71c1c;
+        }
+        
+        /* Medidores en los costados del tanque */
+        .level-markers {
+            position: absolute;
+            top: 0;
+            right: -30px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        
+        .level-marker {
+            display: flex;
+            align-items: center;
+        }
+        
+        .marker-line {
+            width: 10px;
+            height: 1px;
+            background-color: #b0bec5;
+            margin-right: 5px;
+        }
+        
+        .marker-label {
+            font-size: 0.7rem;
+            color: #78909c;
+        }
+        
+        /* Alertas y estados */
+        .status-alert {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.5s;
+            z-index: 2;
+        }
+        
+        .status-alert.visible {
+            opacity: 1;
+        }
+        
+        .low-alert {
+            background-color: rgba(255, 87, 87, 0.8);
+            color: white;
+            box-shadow: 0 0 10px rgba(255, 87, 87, 0.5);
+        }
+        
+        .normal-status {
+            background-color: rgba(123, 237, 159, 0.8);
+            color: #1b5e20;
+            box-shadow: 0 0 10px rgba(123, 237, 159, 0.5);
+        }
+        .medium-status {
+            background-color: rgba(229, 237, 123, 0.8);
+            color: #5a5e1b;
+            box-shadow: 0 0 10px rgba(123, 237, 159, 0.5);
+        }
+        
+        /* Etiquetas para el tanque */
+        .tank-label {
+            position: absolute;
+            left: -55px;
+            width: 50px;
+            text-align: right;
+            font-size: 0.8rem;
+            color: #546e7a;
+        }
+        
+        .tank-label-100 { top: 0; }
+        .tank-label-75 { top: 25%; }
+        .tank-label-50 { top: 50%; }
+        .tank-label-25 { top: 75%; }
+        .tank-label-0 { top: 95%; }
+
+        .horaFecha {         
+            
+
+            color: #286b22;
+            font-size: 0.8rem;
+            
+        }
+
+
+
+
+                .JPGbomba {
+            background-image: url("img/bomba on.gif");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+
+            margin-top: 50px;
+            margin-bottom: 50px;
+           
+
+            height: 150px;
+            width: 150px;
+
+            border: 0px solid #000000;
+            padding: 10px;
+            border-radius: 10px;
+            display: flex; /* ← cambia de inline-block a flex */
+            justify-content: center; /* Centra horizontalmente */
+            align-items: center;     /* Centra verticalmente */
+            
+        }
+
+        .contenedorVertical {
+            background: rgb(255, 255, 255);
+            border-radius: 15px;
+            padding: 10px;
+            
+            
+            /* Flexbox en COLUMNA (vertical) */
+            display: flex;
+            flex-direction: column;  /* Esto es clave */
+            align-items: center;     /* Centra horizontalmente los hijos */
+            gap: 0px;              /* Espacio vertical entre elementos */
+            
+            /* Reset de posicionamiento (por si acaso) */
+            position: static; /* Elimina 'relative' si no es necesario */
+            overflow: visible; /* Cambia de 'hidden' si corta contenido */
+        }
+
+        .contenedorHorizontal {
+            
+            border-radius: 15px;
+            padding: 20px;
+            
+            transition: transform 0.3s, box-shadow 0.3s;
+            
+            position: relative;
+            overflow: hidden;
+            
+            
+            /* Flexbox para alinear elementos horizontalmente */
+            display: flex;           /* Activa Flexbox */
+            flex-direction: row;     /* Elementos en fila (horizontal) - por defecto, no es necesario */
+            justify-content: center; /* Centra horizontalmente */
+            align-items: center;     /* Centra verticalmente los elementos */
+            gap: 30px;              /* Espacio entre elementos (opcional) */
+        }
+
+        .button {
+            background: rgb(240, 240, 240); /* Color base (gris) */
+            border-radius: 15px;
+            padding: 20px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+            min-width: 150px;
+
+                /* Fuente Courier Prime en negrita */
+            font-family: 'Courier Prime', monospace;
+            font-weight: 550; /* Negrita */
+            font-size: 22px; /* Ajusta el tamaño si es necesario */
+        }
+
+        /* Botón ON (verde) */
+        .button--on {
+            background: rgb(160, 194, 160); /* Verde */
+            color: white; /* Texto blanco para mejor contraste */
+        }
+
+        .button--on--inactive {
+            background: rgb(180, 192, 180); /* Verde */
+            color: white; /* Texto blanco para mejor contraste */
+        }
+
+        .button--off--inactive {
+            background: rgb(180, 192, 180); /* Verde */
+            color: white; /* Texto blanco para mejor contraste */
+        }
+        
+
+        /* Botón OFF (rojo) */
+        .button--off {
+            background: rgb(192, 147, 147); /* Rojo */
+            color: white;
+        }
+
+        /* Efecto al pasar el mouse (hover) */
+        .button:hover {
+            opacity: 0.9;
+        }
+
+
+
+
+
+
+            .JPGllave {
+            background-image: url("img/Pok.png");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+
+            margin-top: 50px;
+            margin-bottom: 50px;
+           
+
+            height: 200px;
+            width: 150px;
+
+            border: 0px solid #000000;
+            padding: 10px;
+            border-radius: 10px;
+            display: flex; /* ← cambia de inline-block a flex */
+            justify-content: center; /* Centra horizontalmente */
+            align-items: center;     /* Centra verticalmente */
+            
+        }
+
+        
+
+
+
+
+
+    </style>
+</head>
+<body>
+    <div id="connection-message" class="connection-message"></div>
+    
+    <header>
+        <h1>TK032</h1>
+        <h2>NIVEL TANQUE CISTERNA</h2>
+        <div id="fechaHora"class="horaFecha"></div>
+    </header>
+    
+    <div class="container">
+        <div class="dashboard">
+            <div class="card">
+                <div class="card-title">
+                
+                    Monitor de Nivel de Tanque 
+                    <span id="connection-status" class="status-indicator"></span>
+                </div>
+
+                <div class="contenedorVertical">
+                    <div class="tank-container">
+
+                        <div class="JPGtank">
+                                <div class="tank">
+                                <div id="water" class="water" style="height: 25%">
+                                        <div class="water-top"></div>
+                                    </div>
+                                    
+                                    <div class="tank-label tank-label-100">100%</div>
+                                    <div class="tank-label tank-label-75">75%</div>
+                                    <div class="tank-label tank-label-50">50%</div>
+                                    <div class="tank-label tank-label-25">25%</div>
+                                    <div class="tank-label tank-label-0">0%</div>
+                                    
+                                    <div id="status-alert" class="status-alert"></div>
+                                </div>
+                            </div>
+                        
+
+
+
+                            <div id="level-display" class="level-display">--.-</div>
+                            <div class="level-label">Porcentaje</div>
+                            <div id="last-update" class="last-update">Esperando datos...</div>
+                     </div>
+                </div>
+                <div class="stats">
+                    <div class="stat-item">
+                        <div id="min-value" class="stat-value">--.-</div>
+                        <div class="stat-label">Mínimo</div>
+                    </div>
+                    <div class="stat-item">
+                        <div id="avg-value" class="stat-value">--.-</div>
+                        <div class="stat-label">Promedio</div>
+                    </div>
+                    <div class="stat-item">
+                        <div id="max-value" class="stat-value">--.-</div>
+                        <div class="stat-label">Máximo</div>
+                    </div>
+                </div>
+            </div>
+
+
+
+
+
+            <div class="card">
+                <div class="card-title">
+                    Monitoreo Bomba 
+                </div>
+                <div class="contenedorVertical">
+                    <div id="jpgBomba" class="JPGbomba"></div>
+                    <div id="estadoBomba" class="level-display" style="position: relative; top: -30px; color: #73a08f;">
+                        Encendida
+                    </div>
+                </div>
+
+                <div class="contenedorHorizontal">
+                    <button id="buttonOn" class="button button--on--inactive">Encender</button>
+                    <button id="buttonOff" class="button button--off">Apagar</button>
+                </div>
+
+                <div class="contenedorVertical">
+
+                    <div class="contenedorHorizontal" style="margin-top: -20px;">
+                        <div class="level-display" style="   color: #a8a8a8; font-size: 20px;">
+                            Tension: 
+                        </div>
+                        <div class="level-display" style="   color: #6f9abd; font-size: 25px;">
+                            380 V
+                        </div>
+                    </div>
+
+                    <div class="contenedorHorizontal " style="margin-top: -50px;">
+                        <div class="level-display" style="   color: #a8a8a8; font-size: 20px;">
+                            Corriente: 
+                        </div>
+                        <div class="level-display" style="   color: #6f9abd; font-size: 25px;">
+                            45 A
+                        </div>
+                    </div>
+
+                    <div class="contenedorHorizontal" style="margin-top: -50px;">
+                        <div class="level-display" style="   color: #a8a8a8; font-size: 20px;">
+                            Presión: 
+                        </div>
+                        <div class="level-display" style="   color: #6f9abd; font-size: 25px;">
+                            9 Kg/cm2
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+
+
+
+
+
+                <div class="card">
+                    <div class="card-title">
+                        Protecciones 
+                    </div>
+                    <div class="contenedorHorizontal">
+                        <div id="JPGllave" class="JPGllave"></div>
+                    </div>
+                    <div class="contenedorHorizontal" style="margin-top: -90px;">
+                        <div id="estadoLlave" class="level-display" style="font-size: 35px; color: #683f3f;">Sin fallas</div>
+                    </div>
+                 </div>
+
+
+                 <div class="card">
+                    <div>
+                        Monitoreo Vibraciones
+                    </div>
+                    <div class="contenedorHorizontal">
+                        <div id="Vibraciones" class="level-display" style="font-size: 35px; color: #546e7a;">1.6g</div>
+                    </div> 
+                    <div class="contenedorHorizontal">
+                        <!-- Canvas para el gráfico -->
+                        <canvas id="vibrationChart"></canvas>
+                    </div>   
+                 </div>
+
+
+
+
+
+
+
+
+
+                
+                
+
+                
+                
+
+           
+
+
+
+
+
+            
+         
+        </div>
+    </div>
+    
+    <footer>
+        Tuzziot  - instrumentacion y control © 2025 | Area Técnica Iiot
+    </footer>
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <script>
+        //vibraciones
+
+// Configuración inicial
+const maxDataPoints = 20; // Máximo de puntos en el gráfico
+let vibrationData = []; // Array para almacenar valores históricos
+let timeLabels = []; // Array para etiquetas de tiempo
+
+// Función para generar valores aleatorios entre 1.19 y 1.69
+function getRandomValue(min, max) {
+    return parseFloat((Math.random() * (max - min) + min).toFixed(2));
+}
+
+// Crear gráfico inicial con Chart.js
+const ctx = document.getElementById('vibrationChart').getContext('2d');
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: timeLabels,
+        datasets: [{
+            label: 'Vibración (g)',
+            data: vibrationData,
+            borderColor: '#4285F4',
+            backgroundColor: 'rgba(66, 133, 244, 0.1)',
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                min: 1.0,
+                max: 2.0,
+                title: {
+                    display: true,
+                    text: 'Aceleración (g)'
+                }
+            },
+            x: {
+                title: {
+                    display: true,
+                    text: 'Tiempo'
+                }
+            }
+        }
+    }
+});
+
+// Función para actualizar datos y gráfico
+function updateVibration() {
+    const vibrationElement = document.getElementById('Vibraciones');
+    
+    // Verificar si la bomba está encendida (1.19, 1.69) : 1.0;
+    const newValue = bombaEncendida ? getRandomValue(1.19, 1.35) : 1.0;
+
+    // Actualizar el valor en el HTML
+    vibrationElement.textContent = `${newValue}g`;
+    vibrationElement.style.color = newValue > 1.6 ? '#ff5252' : '#546e7a';
+
+    // Agregar nuevo dato al array (eliminando el más antiguo si supera el límite)
+    vibrationData.push(newValue);
+    timeLabels.push(new Date().toLocaleTimeString());
+
+    if (vibrationData.length > maxDataPoints) {
+        vibrationData.shift();
+        timeLabels.shift();
+    }
+
+    // Actualizar gráfico
+    chart.data.labels = timeLabels;
+    chart.data.datasets[0].data = vibrationData;
+    chart.update();
+
+    // Llamar a la función cada 2 segundos (simulación en tiempo real)
+    setTimeout(updateVibration, 2000);
+}
+
+// Iniciar la simulación al cargar la página
+window.onload = updateVibration;
+
+
+
+
+    </script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <script>
+        //Variable para rastrear el estado actual de la llave
+        let llaveActivada = false;
+
+        function toggleLlave(){
+            //obrener los elementos del DOM
+            const jpgLlave = document.querySelector('.JPGllave');
+            const estadoLlave = document.getElementById('estadoLlave');
+
+            //Alternar entre dos estados
+            if(llaveActivada){
+                //volver al estado original
+                jpgLlave.style.backgroundImage = 'url("img/Pok.png")';
+                estadoLlave.textContent = 'Sin Fallas';
+                estadoLlave.style.color = '#43683f';
+            }else{
+                //cambiar al estado falla
+                jpgLlave.style.backgroundImage = 'url("img/Poff.png")';
+                estadoLlave.textContent = 'Falla Térmica';
+                estadoLlave.style.color = '#683f3f';
+            }
+
+            //Invertir el estado para el proximo clic
+            llaveActivada = !llaveActivada;
+        }
+
+        //asignar el evento click al elemento
+        document.querySelector('.JPGllave').addEventListener('click' , toggleLlave);
+
+    </script>
+
+    
+   <script>
+    // Variables estadísticas
+    let valorMinimo = Infinity;
+    let valorMaximo = -Infinity;
+    let sumaValores = 0;
+    let cantidadValores = 0;
+
+    // Referencias a elementos del DOM
+    const elementoAgua = document.getElementById('water');
+    const elementoNivel = document.getElementById('level-display');
+    const elementoUltimaActualizacion = document.getElementById('last-update');
+    const elementoEstadoConexion = document.getElementById('connection-status');
+    const elementoMensajeConexion = document.getElementById('connection-message');
+    const elementoMinimo = document.getElementById('min-value');
+    const elementoPromedio = document.getElementById('avg-value');
+    const elementoMaximo = document.getElementById('max-value');
+    const elementoAlerta = document.getElementById('status-alert');
+
+    function actualizarNivel(valor) {
+        const porcentajeAltura = valor;
+        elementoAgua.style.height = `${porcentajeAltura}%`;
+
+        if (valor < 26) {
+            elementoAgua.classList.add('low-level');
+            elementoAlerta.textContent = 'NIVEL BAJO';
+            elementoAlerta.classList.remove('normal-status', 'medium-status');
+            elementoAlerta.classList.add('low-alert', 'visible');
+        } else if (valor < 55) {
+            elementoAgua.classList.remove('low-level');
+            elementoAlerta.textContent = 'NIVEL MEDIO';
+            elementoAlerta.classList.remove('normal-status', 'low-alert');
+            elementoAlerta.classList.add('medium-status', 'visible');
+        } else {
+            elementoAgua.classList.remove('low-level');
+            elementoAlerta.textContent = 'NIVEL NORMAL';
+            elementoAlerta.classList.remove('low-alert', 'medium-status');
+            elementoAlerta.classList.add('normal-status', 'visible');
+        }
+
+        elementoNivel.textContent = valor.toFixed(1) + '%';
+        elementoNivel.classList.add('new-data');
+        setTimeout(() => elementoNivel.classList.remove('new-data'), 500);
+
+        if (valor < 26) {
+            elementoNivel.style.color = '#ff6b6b';
+        } else {
+            elementoNivel.style.color = '#64b5f6';
+        }
+
+        const ahora = new Date();
+        const hora = ahora.toLocaleTimeString();
+        elementoUltimaActualizacion.textContent = `Última actualización: ${hora}`;
+
+        if (valor < valorMinimo) {
+            valorMinimo = valor;
+            elementoMinimo.textContent = valorMinimo.toFixed(1) + '%';
+        }
+
+        if (valor > valorMaximo) {
+            valorMaximo = valor;
+            elementoMaximo.textContent = valorMaximo.toFixed(1) + '%';
+        }
+
+        sumaValores += valor;
+        cantidadValores++;
+        const promedio = sumaValores / cantidadValores;
+        elementoPromedio.textContent = promedio.toFixed(1) + '%';
+    }
+
+    function simularDatos() {
+        let nivelAleatorio = Math.random() < 0.2
+            ? Math.random() * 25
+            : Math.random() * 75 + 25;
+
+        actualizarNivel(nivelAleatorio);
+        setTimeout(simularDatos, 60000); // Cada minuto
+    }
+
+    window.addEventListener('load', function () {
+        simularDatos();
+    });
+
+    function mostrarFechaHora() {
+        const fecha = new Date();
+        const opciones = {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+            hour: 'numeric', minute: 'numeric', second: 'numeric',
+            hour12: true
+        };
+        const fechaHoraFormateada = fecha.toLocaleString('es-ES', opciones);
+        document.getElementById('fechaHora').textContent = fechaHoraFormateada;
+    }
+
+    setInterval(mostrarFechaHora, 1000);
+    mostrarFechaHora();
+</script>
+
+
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    let bombaEncendida = true;
+
+    const jpgBomba = document.getElementById("jpgBomba");
+    const estadoBomba = document.getElementById("estadoBomba");
+    const buttonOn = document.getElementById("buttonOn");
+    const buttonOff = document.getElementById("buttonOff");
+    const estadoLlave = document.getElementById("estadoLlave"); // ← Importante para leer el estado
+
+    function actualizarEstadoBomba() {
+        if (bombaEncendida) {
+            jpgBomba.style.backgroundImage = 'url("img/bomba on.gif")';
+            estadoBomba.textContent = "ENCENDIDA";
+            estadoBomba.style.color = "#73a08f";
+
+            buttonOn.classList.remove("button--on");
+            buttonOn.classList.add("button--on--inactive");
+            buttonOff.classList.remove("button--off--inactive");
+            buttonOff.classList.add("button--off");
+        } else {
+            jpgBomba.style.backgroundImage = 'url("img/bomba off2.png")';
+            estadoBomba.textContent = "APAGADA";
+            estadoBomba.style.color = '#adadad';
+
+            buttonOff.classList.remove("button--off");
+            buttonOff.classList.add("button--off--inactive");
+            buttonOn.classList.remove("button--on--inactive");
+            buttonOn.classList.add("button--on");
+        }
+    }
+
+    buttonOn.addEventListener("click", () => {
+        // Verifica si hay Falla Térmica
+        if (estadoLlave.textContent === 'Falla Térmica') {
+            //alert("No se puede encender la bomba: Falla Térmica detectada.");
+
+            Swal.fire({
+            title: 'Error en el encendido',
+            text: 'No se puede encender la bomba: Falla Térmica detectada.',
+            icon: 'warning',
+            confirmButtonText: 'Entendido'
+            });
+
+            return;
+        }
+
+        bombaEncendida = true;
+        actualizarEstadoBomba();
+    });
+
+    buttonOff.addEventListener("click", () => {
+        bombaEncendida = false;
+        actualizarEstadoBomba();
+    });
+
+    // También puedes observar el estado de la llave y apagar la bomba automáticamente si cambia a "Falla Térmica"
+    const observer = new MutationObserver(() => {
+        if (estadoLlave.textContent === 'Falla Térmica') {
+            bombaEncendida = false;
+            actualizarEstadoBomba();
+        }
+    });
+
+    observer.observe(estadoLlave, { childList: true });
+
+    actualizarEstadoBomba();
+</script>
+
+
+
+
+</body>
+</html>
