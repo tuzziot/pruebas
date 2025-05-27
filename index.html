@@ -20,6 +20,7 @@
             --water-color-low: linear-gradient(180deg, #ff6b6b, #b71c1c);
             --water-glow: 0 0 15px rgba(100, 181, 246, 0.7);
             --water-glow-low: 0 0 15px rgba(255, 107, 107, 0.7);
+          
         }
         
         body {
@@ -400,7 +401,7 @@
 
 
                 .JPGbomba {
-            background-image: url("img/Bomba on.gif");
+            background-image: url("img/bomba on.gif");
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -518,6 +519,28 @@
 
             height: 200px;
             width: 150px;
+
+            border: 0px solid #000000;
+            padding: 10px;
+            border-radius: 10px;
+            display: flex; /* ← cambia de inline-block a flex */
+            justify-content: center; /* Centra horizontalmente */
+            align-items: center;     /* Centra verticalmente */
+            
+        }
+
+                    .JPGvibraciones {
+            background-image: url("img/monitor.png");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+
+            margin-top: 50px;
+            margin-bottom: 50px;
+           
+
+            height: 200px;
+            width: 375px;
 
             border: 0px solid #000000;
             padding: 10px;
@@ -681,6 +704,34 @@
                  </div>
 
 
+            <div class="card">
+                <div>
+                    Monitor Ondas
+                </div>
+                <div class="contenedorHorizontal">
+                    <div id="Vibraciones" class="level-display" style="font-size: 35px; color: #546e7a;">Voltaje</div>
+                </div>
+                <div class="contenedorHorizontal">
+                    <div class="JPGvibraciones">
+                        <div class="contenedorHorizontal" style="background-color: #ffce65; height: 102px; width: 106px; margin-left: -104px;
+                            margin-top: -5px; border-radius: 1px; background-image: url(img/cuadricula.png); background-size: 400px;"> 
+                            <canvas id="ondaCanvas" width="300" height="102" style="position: absolute; left: 0; top: 0;">                                
+                            </canvas>
+                        </div>
+                    </div>
+
+                </div>
+                    <div class="contenedorHorizontal" style="margin-top: -50px;">
+                        <button id="buttonR" style="background-color: #ff6600ce; height: 40px; width: 110px; font-size: 20px; color: #ffff; 
+                        font-family: 'Courier New', Courier, monospace; border-radius: 5px; border-style: none;">Fase R</button>
+                        <button id="buttonS" style="background-color: #c46f37c5; height: 40px; width: 110px; font-size: 20px; color: #ffff; 
+                        font-family: 'Courier New', Courier, monospace; border-radius: 5px; border-style: none;">Fase S</button>
+                        <button id="buttonT" style="background-color: #8a532fc7; height: 40px; width: 110px; font-size: 20px; color: #ffff; 
+                        font-family: 'Courier New', Courier, monospace; border-radius: 5px; border-style: none;">Fase T</button>
+                    </div>
+            </div>
+
+
 
 
 
@@ -714,6 +765,72 @@
 
 
 
+   <script>
+  const canvas = document.getElementById('ondaCanvas');
+  const ctx2 = canvas.getContext('2d');
+
+  // Estado de cada fase (true = activo, false = inactivo)
+  const ondasActivas = {
+    R: true,
+    S: true,
+    T: true
+  };
+
+  // Asocia cada botón con la fase correspondiente
+  const botones = {
+    R: document.getElementById('buttonR'),
+    S: document.getElementById('buttonS'),
+    T: document.getElementById('buttonT')
+  };
+
+  // Cambia el estado al hacer clic en los botones
+  botones.R.addEventListener('click', () => toggleOnda('R', botones.R));
+  botones.S.addEventListener('click', () => toggleOnda('S', botones.S));
+  botones.T.addEventListener('click', () => toggleOnda('T', botones.T));
+
+  function toggleOnda(fase, boton) {
+    ondasActivas[fase] = !ondasActivas[fase];
+    boton.style.opacity = ondasActivas[fase] ? 1 : 0.5; // Cambia la opacidad como indicación
+  }
+
+  function drawWaves() {
+    ctx2.clearRect(0, 0, canvas.width, canvas.height);
+    const width = canvas.width;
+    const height = canvas.height;
+    const midY = height / 2;
+    const amplitude = height / 3;
+    const freq = 0.05; // frecuencia de onda
+    const speed = Date.now() * 0.002;
+
+    const fases = [
+      { key: 'R', color: '#ff6600', phase: 0 },
+      { key: 'S', color: '#c46f37', phase: (2 * Math.PI) / 3 },
+      { key: 'T', color: '#8a532f', phase: (4 * Math.PI) / 3 }
+    ];
+
+    fases.forEach(({ key, color, phase }) => {
+      if (!ondasActivas[key]) return; // No dibujar si está desactivada
+
+      ctx2.beginPath();
+      ctx2.strokeStyle = color;
+      ctx2.lineWidth = 2;
+
+      for (let x = 0; x < width; x++) {
+        const y = midY + amplitude * Math.sin(freq * x + speed + phase);
+        if (x === 0) {
+          ctx2.moveTo(x, y);
+        } else {
+          ctx2.lineTo(x, y);
+        }
+      }
+      ctx2.stroke();
+    });
+
+    requestAnimationFrame(drawWaves);
+  }
+
+  drawWaves();
+</script>
 
 
 
@@ -964,7 +1081,7 @@ window.onload = updateVibration;
 
     function actualizarEstadoBomba() {
         if (bombaEncendida) {
-            jpgBomba.style.backgroundImage = 'url("img/Bomba on.gif")';
+            jpgBomba.style.backgroundImage = 'url("img/bomba on.gif")';
             estadoBomba.textContent = "ENCENDIDA";
             estadoBomba.style.color = "#73a08f";
 
@@ -976,6 +1093,7 @@ window.onload = updateVibration;
             jpgBomba.style.backgroundImage = 'url("img/bomba off2.png")';
             estadoBomba.textContent = "APAGADA";
             estadoBomba.style.color = '#adadad';
+            
 
             buttonOff.classList.remove("button--off");
             buttonOff.classList.add("button--off--inactive");
@@ -1026,3 +1144,6 @@ window.onload = updateVibration;
 
 </body>
 </html>
+
+
+
